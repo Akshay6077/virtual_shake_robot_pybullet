@@ -21,13 +21,13 @@ class SimulationNode(Node):
             'trajectory_action',
             execute_callback=self.execute_trajectory_callback
         )
-        self._load_pbr_action_server = ActionServer(
-            self,
-            LoadPBR,
-            'load_pbr_action',
-            execute_callback=self.load_pbr_callback
+        # self._load_pbr_action_server = ActionServer(
+        #     self,
+        #     LoadPBR,
+        #     'load_pbr_action',
+        #     execute_callback=self.load_pbr_callback
 
-        )
+        # )
         
         self.get_logger().info("Action server up and running!")
 
@@ -243,7 +243,8 @@ class SimulationNode(Node):
             linkInertialFrameOrientations=[[0, 0, 0, 1]],
             linkParentIndices=[0],
             linkJointTypes=[p.JOINT_PRISMATIC],
-            linkJointAxis=[[1, 0, 0]],  
+            linkJointAxis=[[1, 0, 0]],  # Assuming movement along the x-axis
+            physicsClientId=client_id
         )
 
         if self.robot_id < 0:
@@ -251,6 +252,22 @@ class SimulationNode(Node):
             return
 
         self.get_logger().info(f"Combined world box and pedestal created with ID: {self.robot_id}")
+
+        # Enable collision for the world box
+        p.setCollisionFilterGroupMask(self.robot_id, -1, collisionFilterGroup=1, collisionFilterMask=1)
+        self.get_logger().info(f"Collision filter set for world box base link of robot ID: {self.robot_id}")
+
+        # Enable collision for the pedestal
+        p.setCollisionFilterGroupMask(self.robot_id, 0, collisionFilterGroup=1, collisionFilterMask=1)
+        self.get_logger().info(f"Collision filter set for pedestal link 0 of robot ID: {self.robot_id}")
+
+        # Verify the number of joints
+        num_joints = p.getNumJoints(self.robot_id, physicsClientId=client_id)
+        self.get_logger().info(f"Number of joints in the robot: {num_joints}")
+
+        if num_joints == 0:
+            self.get_logger().error("No joints found in the created robot.")
+            return
 
         # Set dynamics parameters for the world box and pedestal
         p.changeDynamics(
@@ -277,80 +294,34 @@ class SimulationNode(Node):
             physicsClientId=client_id
         )
 
-        # Ensure collision is enabled
-        p.setCollisionFilterGroupMask(self.robot_id, -1, collisionFilterGroup=1, collisionFilterMask=1)
-        self.get_logger().info(f"Collision filter set for combined body with ID: {self.robot_id}")
-
-        # Check the number of joints in the created multi-body
-        num_joints = p.getNumJoints(self.robot_id, physicsClientId=client_id)
-        self.get_logger().info(f"Number of joints in the robot: {num_joints}")
-
-        if num_joints == 0:
-            self.get_logger().error("No joints found in the created robot.")
-            return
-
         # Print joint info
         for joint_index in range(num_joints):
             joint_info = p.getJointInfo(self.robot_id, joint_index, physicsClientId=client_id)
             self.get_logger().info(f"Joint {joint_index} info: {joint_info}")
 
-        # Enable collision rendering for debugging
+        
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1, physicsClientId=client_id)
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1, physicsClientId=client_id)
         p.configureDebugVisualizer(p.COV_ENABLE_WIREFRAME, 1, physicsClientId=client_id)
-    
+        self.get_logger().info("Debug visualizer enabled.")
 
-    def load_pbr_callback(self, goal_handle):
-        '''Load the Pbr callback function'''
-
-        self.logger.info("Loading PBR structure...")
-        structure_name = goal_handle.request.structure_name
-        structure_type = goal_handle.request.structure_type
-        feedback_msg = LoadPBR.Feedback()
-
-        if structure_name != "rock":
-            self.logger.error(f"Unknown structure: {structure_name}")
-            goal_handle.abort()
-            return LoadPBR.Result(success=False)
-
+        
         try:
-            if structure_type == 'mesh':
-                rock_mesh_path = self.rock_structure_config['mesh']
-                rock_mesh_scale = self.rock_structure_config['meshScale']
-                rock_mass = self.rock_structure_config['mass']
-                rock_inertia = self.rock_structure_config['inertia']
-                rock_restitution = self.rock_structure_config['restitution']
-                rock_lateralFriction = self.rock_structure_config['lateralFriction']
-                rock_spinningFriction = self.rock_structure_config['spinningFriction']
-                rock_rollingFriction = self.rock_structure_config['rollingFriction']
-                rock_contactDamping = self.rock_structure_config['contactDamping']
-                rock_contactStiffness = self.rock_structure_config['contactStiffness']
+            
+            rock_dimensions = self.rock_structure_config['dimensions']
+            rock_mass = self.rock_structure_config['mass']
+            rock_inertia = self.rock_structure_config['inertia']
+            rock_restitution = self.rock_structure_config['restitution']
+            rock_lateralFriction = self.rock_structure_config['lateralFriction']
+            rock_spinningFriction = self.rock_structure_config['spinningFriction']
+            rock_rollingFriction = self.rock_structure_config['rollingFriction']
+            rock_contactDamping = self.rock_structure_config['contactDamping']
+            rock_contactStiffness = self.rock_structure_config['contactStiffness']
 
-                self.get_logger().info(f"Loading rock mesh from {rock_mesh_path}...")
-                collision_shape = p.createCollisionShape(shapeType=p.GEOM_MESH, fileName=rock_mesh_path, meshScale=rock_mesh_scale)
-                visual_shape = p.createVisualShape(shapeType=p.GEOM_MESH, fileName=rock_mesh_path, meshScale=rock_mesh_scale, rgbaColor=[0.5, 0.5, 0.5, 1])
-                rock_height = rock_mesh_scale[2]  
-
-            elif structure_type == 'box':
-                rock_dimensions = self.rock_structure_config['dimensions']
-                rock_mass = self.rock_structure_config['mass']
-                rock_inertia = self.rock_structure_config['inertia']
-                rock_restitution = self.rock_structure_config['restitution']
-                rock_lateralFriction = self.rock_structure_config['lateralFriction']
-                rock_spinningFriction = self.rock_structure_config['spinningFriction']
-                rock_rollingFriction = self.rock_structure_config['rollingFriction']
-                rock_contactDamping = self.rock_structure_config['contactDamping']
-                rock_contactStiffness = self.rock_structure_config['contactStiffness']
-
-                self.get_logger().info("Loading rock as a box...")
-                collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[d / 2 for d in rock_dimensions])
-                visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[d / 2 for d in rock_dimensions], rgbaColor=[0.5, 0.5, 0.5, 1])
-                rock_height = rock_dimensions[2]
-
-            else:
-                self.get_logger().error("Unknown rock structure type.")
-                goal_handle.abort()
-                return LoadPBR.Result(success=False)
+            self.get_logger().info("Loading rock as a box...")
+            collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[d / 2 for d in rock_dimensions])
+            visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[d / 2 for d in rock_dimensions], rgbaColor=[0.5, 0.5, 0.5, 1])
+            rock_height = rock_dimensions[2]
 
             # Position the rock correctly on the pedestal
             world_box_height = self.structure_config['world_box']['dimensions'][2]
@@ -366,13 +337,17 @@ class SimulationNode(Node):
                 physicsClientId=self.client[0]
             )
 
+            if rock_id < 0:
+                self.get_logger().error("Failed to create the rock multi-body.")
+                return
+
+            self.get_logger().info(f"Rock structure created with ID: {rock_id}")
+
             # Enable collision between rock and combined body
             p.setCollisionFilterGroupMask(rock_id, -1, collisionFilterGroup=1, collisionFilterMask=1)
             self.get_logger().info(f"Collision filter set for rock with ID: {rock_id}")
 
-            self.get_logger().info(f"Rock structure loaded with ID: {rock_id}")
-            self.rock_id = rock_id
-
+            # Set dynamics parameters for the rock
             p.changeDynamics(
                 rock_id, -1,
                 localInertiaDiagonal=rock_inertia,
@@ -385,20 +360,13 @@ class SimulationNode(Node):
                 physicsClientId=self.client[0]
             )
 
-            feedback_msg.status = "Rock structure loaded successfully"
-            goal_handle.publish_feedback(feedback_msg)
-            goal_handle.succeed()
-
-            result = LoadPBR.Result()
-            result.success = True
-            return result
+            # Verify the rock dynamics
+            dynamics_info = p.getDynamicsInfo(rock_id, -1)
+            self.get_logger().info(f"Rock dynamics info: {dynamics_info}")
 
         except Exception as e:
             self.logger.error(f"Error loading PBR: {str(e)}")
-            feedback_msg.status = f"Error loading PBR: {str(e)}"
-            goal_handle.publish_feedback(feedback_msg)
-            goal_handle.abort()
-            return LoadPBR.Result(success=False)
+
 
 
     def execute_trajectory_callback(self, goal_handle):
