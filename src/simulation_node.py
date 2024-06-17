@@ -204,11 +204,11 @@ class SimulationNode(Node):
         physics_params = p.getPhysicsEngineParameters(physicsClientId = client_id)
         self.get_logger().info(f"physics Parameters : {physics_params}")
 
-         # Enable debug visualization
-        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1, physicsClientId=client_id)
-        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0, physicsClientId=client_id)
-        p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1, physicsClientId=client_id)
-        p.configureDebugVisualizer(p.COV_ENABLE_WIREFRAME, 1, physicsClientId=client_id)
+        #  # Enable debug visualization
+        # p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1, physicsClientId=client_id)
+        # p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0, physicsClientId=client_id)
+        # p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1, physicsClientId=client_id)
+        # p.configureDebugVisualizer(p.COV_ENABLE_WIREFRAME, 1, physicsClientId=client_id)
 
 
     def create_robot(self, client_id):
@@ -243,7 +243,7 @@ class SimulationNode(Node):
             linkInertialFrameOrientations=[[0, 0, 0, 1]],
             linkParentIndices=[0],
             linkJointTypes=[p.JOINT_PRISMATIC],
-            linkJointAxis=[[1, 0, 0]],  # Assuming movement along the x-axis
+            linkJointAxis=[[1, 0, 0]],  
             physicsClientId=client_id
         )
 
@@ -300,10 +300,10 @@ class SimulationNode(Node):
             self.get_logger().info(f"Joint {joint_index} info: {joint_info}")
 
         
-        p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1, physicsClientId=client_id)
-        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1, physicsClientId=client_id)
-        p.configureDebugVisualizer(p.COV_ENABLE_WIREFRAME, 1, physicsClientId=client_id)
-        self.get_logger().info("Debug visualizer enabled.")
+        # p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1, physicsClientId=client_id)
+        # p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1, physicsClientId=client_id)
+        # p.configureDebugVisualizer(p.COV_ENABLE_WIREFRAME, 1, physicsClientId=client_id)
+        # self.get_logger().info("Debug visualizer enabled.")
 
         
         try:
@@ -326,7 +326,7 @@ class SimulationNode(Node):
             # Position the rock correctly on the pedestal
             world_box_height = self.structure_config['world_box']['dimensions'][2]
             pedestal_height = self.structure_config['pedestal']['dimensions'][2]
-            rock_position = [0, 0, world_box_height + pedestal_height + (rock_height / 2) + 0.01]
+            rock_position = [0, 0, world_box_height + pedestal_height + (rock_height / 2) + 0.02]
             self.get_logger().info(f"Placing rock at position: {rock_position}")
 
             rock_id = p.createMultiBody(
@@ -334,7 +334,7 @@ class SimulationNode(Node):
                 baseCollisionShapeIndex=collision_shape,
                 baseVisualShapeIndex=visual_shape,
                 basePosition=rock_position,
-                physicsClientId=self.client[0]
+                physicsClientId=client_id
             )
 
             if rock_id < 0:
@@ -357,7 +357,7 @@ class SimulationNode(Node):
                 rollingFriction=rock_rollingFriction,
                 contactDamping=rock_contactDamping,
                 contactStiffness=rock_contactStiffness,
-                physicsClientId=self.client[0]
+                physicsClientId=client_id
             )
 
             # Verify the rock dynamics
