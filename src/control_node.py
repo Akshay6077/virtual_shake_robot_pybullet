@@ -24,7 +24,7 @@ class ControlNode(Node):
         )
         self.get_logger().info("ControlNode initialized and action server started.")
         self.client_id = 0
-        self.robot_id = 2
+        self.robot_id = 1
         self.current_position = 0.0
         self.current_velocity = 0.0
         # Add attributes to store trajectory data

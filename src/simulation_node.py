@@ -156,6 +156,8 @@ class SimulationNode(Node):
         self.timestamps = []
 
 
+        self.robot_id = None
+
         self.rock_id = None
 
     def server_connection(self):
@@ -192,32 +194,67 @@ class SimulationNode(Node):
                                     splitImpulsePenetrationThreshold=split_impulse_threshold,
                                     enableConeFriction=enable_cone_friction,
                                     deterministicOverlappingPairs=overlapping_pairs,
-                                    physicsClientId=client_id)        
+                                    physicsClientId=client_id)    
+
+         # Set collision filter mode to AND
+        p.setPhysicsEngineParameter(collisionFilterMode=0)    
 
 
         ##verfiy the physics parameters
         physics_params = p.getPhysicsEngineParameters(physicsClientId = client_id)
         self.get_logger().info(f"physics Parameters : {physics_params}")
 
+         # Enable debug visualization
+        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1, physicsClientId=client_id)
+        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0, physicsClientId=client_id)
+        p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1, physicsClientId=client_id)
+        p.configureDebugVisualizer(p.COV_ENABLE_WIREFRAME, 1, physicsClientId=client_id)
+
+
     def create_robot(self, client_id):
         self.get_logger().info("Loading plane URDF...")
-        p.loadURDF("plane.urdf", physicsClientId=client_id)
+        plane_id = p.loadURDF("plane.urdf", physicsClientId=client_id)
+        self.get_logger().info(f"Plane loaded with ID: {plane_id}")
 
         self.get_logger().info("Creating world box shape...")
-        world_box_shape = {
-            'collision': p.createCollisionShape(p.GEOM_BOX, halfExtents=[x / 2 for x in self.structure_config['world_box']['dimensions']]),
-            'visual': p.createVisualShape(p.GEOM_BOX, halfExtents=[x / 2 for x in self.structure_config['world_box']['dimensions']])
-        }
-        world_box_id = p.createMultiBody(baseMass=self.structure_config['world_box']['mass'],
-                                        baseCollisionShapeIndex=world_box_shape['collision'],
-                                        baseVisualShapeIndex=world_box_shape['visual'],
-                                        basePosition=[0, 0, self.structure_config['world_box']['dimensions'][2] / 2],
-                                        physicsClientId=client_id)
-        self.get_logger().info(f"World box created with ID: {world_box_id}")
+        world_box_half_extents = [x / 2 for x in self.structure_config['world_box']['dimensions']]
+        world_box_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=world_box_half_extents)
+        world_box_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=world_box_half_extents)
+        self.get_logger().info("World box shape created.")
 
-        # Set dynamics parameters for the world box
+        self.get_logger().info("Creating pedestal shape...")
+        pedestal_half_extents = [d / 2 for d in self.structure_config['pedestal']['dimensions']]
+        pedestal_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=pedestal_half_extents)
+        pedestal_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=pedestal_half_extents, rgbaColor=[1, 0, 0, 1])
+        self.get_logger().info("Pedestal shape created.")
+
+        # Create the combined multi-body with a prismatic joint
+        self.robot_id = p.createMultiBody(
+            baseMass=self.structure_config['world_box']['mass'],
+            baseCollisionShapeIndex=world_box_collision_shape,
+            baseVisualShapeIndex=world_box_visual_shape,
+            basePosition=[0, 0, world_box_half_extents[2]],
+            linkMasses=[self.structure_config['pedestal']['mass']],
+            linkCollisionShapeIndices=[pedestal_collision_shape],
+            linkVisualShapeIndices=[pedestal_visual_shape],
+            linkPositions=[[0, 0, world_box_half_extents[2] + pedestal_half_extents[2] + 0.01]],
+            linkOrientations=[[0, 0, 0, 1]],
+            linkInertialFramePositions=[[0, 0, 0]],
+            linkInertialFrameOrientations=[[0, 0, 0, 1]],
+            linkParentIndices=[0],
+            linkJointTypes=[p.JOINT_PRISMATIC],
+            linkJointAxis=[[1, 0, 0]],  
+        )
+
+        if self.robot_id < 0:
+            self.get_logger().error("Failed to create the combined multi-body.")
+            return
+
+        self.get_logger().info(f"Combined world box and pedestal created with ID: {self.robot_id}")
+
+        # Set dynamics parameters for the world box and pedestal
         p.changeDynamics(
-            world_box_id, -1,
+            self.robot_id, -1,
             localInertiaDiagonal=self.structure_config['world_box']['inertia'],
             restitution=self.dynamics_config['world_box']['restitution'],
             lateralFriction=self.dynamics_config['world_box']['lateralFriction'],
@@ -228,50 +265,8 @@ class SimulationNode(Node):
             physicsClientId=client_id
         )
 
-        try:
-            pedestal_mesh_path = self.get_parameter('structure.pedestal.mesh').value
-            mesh_scale = self.get_parameter('structure.pedestal.meshScale').value
-            if pedestal_mesh_path:
-                self.get_logger().info(f"Loading pedestal mesh from {pedestal_mesh_path}...")
-                pedestal_shape = {
-                    'collision': p.createCollisionShape(shapeType=p.GEOM_MESH, fileName=pedestal_mesh_path, meshScale=mesh_scale),
-                    'visual': p.createVisualShape(shapeType=p.GEOM_MESH, fileName=pedestal_mesh_path, meshScale=mesh_scale)
-                }
-            else:
-                raise rclpy.exceptions.ParameterUninitializedException()
-        except rclpy.exceptions.ParameterUninitializedException:
-            self.get_logger().info("No mesh file provided, creating pedestal as a box...")
-            pedestal_shape = {
-                'collision': p.createCollisionShape(p.GEOM_BOX, halfExtents=[d / 2 for d in self.structure_config['pedestal']['dimensions']]),
-                'visual': p.createVisualShape(p.GEOM_BOX, halfExtents=[d / 2 for d in self.structure_config['pedestal']['dimensions']], rgbaColor=[1, 0, 0, 1])
-            }
-
-        self.get_logger().info("Creating and configuring pedestal with prismatic joint...")
-        link_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[d / 2 for d in self.structure_config['pedestal']['dimensions']], rgbaColor=[1, 0, 0, 1])
-        link_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[d / 2 for d in self.structure_config['pedestal']['dimensions']])
-        link_mass = self.structure_config['pedestal']['mass']
-
-        robot_id = p.createMultiBody(
-            baseMass=self.structure_config['world_box']['mass'],
-            baseCollisionShapeIndex=world_box_shape['collision'],
-            baseVisualShapeIndex=world_box_shape['visual'],
-            basePosition=[0, 0, self.structure_config['world_box']['dimensions'][2] / 2],
-            linkMasses=[link_mass],
-            linkCollisionShapeIndices=[link_collision_shape],
-            linkVisualShapeIndices=[link_visual_shape],
-            linkPositions=[[0, 0, self.structure_config['world_box']['dimensions'][2] / 2 + self.structure_config['pedestal']['dimensions'][2] / 2]],
-            linkOrientations=[[0, 0, 0, 1]],
-            linkInertialFramePositions=[[0, 0, 0]],
-            linkInertialFrameOrientations=[[0, 0, 0, 1]],
-            linkParentIndices=[0],
-            linkJointTypes=[p.JOINT_PRISMATIC],
-            linkJointAxis=[[1, 0, 0]], 
-            physicsClientId=client_id
-        )
-        self.get_logger().info(f"Pedestal with prismatic joint created with ID: {robot_id}")
-
         p.changeDynamics(
-            robot_id, 1,
+            self.robot_id, 0,  # Link index for the pedestal
             localInertiaDiagonal=self.structure_config['pedestal']['inertia'],
             restitution=self.dynamics_config['pedestal']['restitution'],
             lateralFriction=self.dynamics_config['pedestal']['lateralFriction'],
@@ -283,19 +278,27 @@ class SimulationNode(Node):
         )
 
         # Ensure collision is enabled
-        p.setCollisionFilterGroupMask(robot_id, -1, collisionFilterGroup=1, collisionFilterMask=1)
-        self.get_logger().info(f"Collision filter set for pedestal with ID: {robot_id}")
+        p.setCollisionFilterGroupMask(self.robot_id, -1, collisionFilterGroup=1, collisionFilterMask=1)
+        self.get_logger().info(f"Collision filter set for combined body with ID: {self.robot_id}")
 
+        # Check the number of joints in the created multi-body
+        num_joints = p.getNumJoints(self.robot_id, physicsClientId=client_id)
+        self.get_logger().info(f"Number of joints in the robot: {num_joints}")
+
+        if num_joints == 0:
+            self.get_logger().error("No joints found in the created robot.")
+            return
+
+        # Print joint info
+        for joint_index in range(num_joints):
+            joint_info = p.getJointInfo(self.robot_id, joint_index, physicsClientId=client_id)
+            self.get_logger().info(f"Joint {joint_index} info: {joint_info}")
 
         # Enable collision rendering for debugging
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1, physicsClientId=client_id)
-
-
-        # Get and log the initial position of the pedestal
-        initial_position_state, initial_orientation_state = p.getBasePositionAndOrientation(robot_id, physicsClientId=client_id)
-        self.get_logger().info(f"Initial position of the pedestal: {initial_position_state}, Initial orientation: {initial_orientation_state}")
-
-
+        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 1, physicsClientId=client_id)
+        p.configureDebugVisualizer(p.COV_ENABLE_WIREFRAME, 1, physicsClientId=client_id)
+    
 
     def load_pbr_callback(self, goal_handle):
         '''Load the Pbr callback function'''
@@ -349,20 +352,23 @@ class SimulationNode(Node):
                 goal_handle.abort()
                 return LoadPBR.Result(success=False)
 
-            # # Common position logic
-            # world_box_height = self.structure_config['world_box']['dimensions'][2]
-            # pedestal_height = self.structure_config['pedestal']['dimensions'][2]
-
-            rock_position = [0, 0, 2.2]
+            # Position the rock correctly on the pedestal
+            world_box_height = self.structure_config['world_box']['dimensions'][2]
+            pedestal_height = self.structure_config['pedestal']['dimensions'][2]
+            rock_position = [0, 0, world_box_height + pedestal_height + (rock_height / 2) + 0.01]
             self.get_logger().info(f"Placing rock at position: {rock_position}")
 
             rock_id = p.createMultiBody(
-                baseMass=rock_mass, 
+                baseMass=rock_mass,
                 baseCollisionShapeIndex=collision_shape,
                 baseVisualShapeIndex=visual_shape,
                 basePosition=rock_position,
                 physicsClientId=self.client[0]
             )
+
+            # Enable collision between rock and combined body
+            p.setCollisionFilterGroupMask(rock_id, -1, collisionFilterGroup=1, collisionFilterMask=1)
+            self.get_logger().info(f"Collision filter set for rock with ID: {rock_id}")
 
             self.get_logger().info(f"Rock structure loaded with ID: {rock_id}")
             self.rock_id = rock_id
@@ -420,6 +426,16 @@ class SimulationNode(Node):
         self.actual_positions = []
         self.actual_velocities = []
 
+        # Verify the robot ID and joint information before control
+        self.get_logger().info(f"Robot ID: {robot_id}, Client ID: {client_id}")
+        num_joints = p.getNumJoints(robot_id, physicsClientId=client_id)
+        self.get_logger().info(f"Number of joints for robot ID {robot_id}: {num_joints}")
+
+        if num_joints == 0:
+            self.logger.error("No joints found in the robot.")
+            goal_handle.abort()
+            return TrajectoryAction.Result(success=False)
+
         for i in range(len(timestamps)):
             self.desired_positions.append(positions[i])
             self.desired_velocities.append(velocities[i])
@@ -428,50 +444,50 @@ class SimulationNode(Node):
             self.desired_position_publisher.publish(Float64(data=positions[i]))
             self.desired_velocity_publisher.publish(Float64(data=velocities[i]))
 
-            # Simulate the joint control
-            p.setJointMotorControl2(
-                bodyUniqueId=robot_id,
-                jointIndex=0,
-                controlMode=p.POSITION_CONTROL,
-                targetPosition=positions[i],
-                targetVelocity=velocities[i],
-                force= 5 * 10**8,
-                maxVelocity=200,
-                physicsClientId=client_id
-            )
+            # Log the parameters before calling the joint control function
+            self.get_logger().info(f"Setting joint control: robot_id={robot_id}, joint_index=0, target_position={positions[i]}, target_velocity={velocities[i]}")
 
-            p.stepSimulation(physicsClientId=client_id)
+            try:
+               
+                p.setJointMotorControl2(
+                    bodyUniqueId=robot_id,
+                    jointIndex=0, 
+                    controlMode=p.POSITION_CONTROL,
+                    targetPosition=positions[i],
+                    targetVelocity=velocities[i],
+                    force=5 * 10**8,
+                    maxVelocity=200,
+                    physicsClientId=client_id
+                )
 
-            # Capture the actual joint state
-            joint_state = p.getJointState(robot_id, 0, physicsClientId=client_id)
-            actual_position, actual_velocity = joint_state[0], joint_state[1]
+                p.stepSimulation(physicsClientId=client_id)
 
+                # Capture the actual joint state
+                joint_state = p.getJointState(robot_id, 0, physicsClientId=client_id)
+                actual_position, actual_velocity = joint_state[0], joint_state[1]
 
+                self.actual_positions.append(actual_position)
+                self.actual_velocities.append(actual_velocity)
+
+                # Publish the actual position and velocity
+                self.postion_publisher.publish(Float64(data=actual_position))
+                self.velocity_publisher.publish(Float64(data=actual_velocity))
+
+                # Feedback
+                feedback_msg.current_position = actual_position
+                feedback_msg.current_velocity = actual_velocity
+                goal_handle.publish_feedback(feedback_msg)
             
+                current_time = time.time()
+                delta_t = current_time - last_time
+                if time_step > delta_t:
+                    time.sleep(time_step - delta_t)
+                last_time = current_time
 
-            self.actual_positions.append(actual_position)
-            self.actual_velocities.append(actual_velocity)
-
-            # Publish the actual position and velocity
-            self.postion_publisher.publish(Float64(data=actual_position))
-            self.velocity_publisher.publish(Float64(data=actual_velocity))
-
-
-
-             
-            #Feedback
-
-            feedback_msg.current_position = actual_position
-            feedback_msg.current_velocity = actual_velocity
-            goal_handle.publish_feedback(feedback_msg)
-          
-            current_time = time.time()
-            delta_t = current_time - last_time
-            if time_step > delta_t:
-                time.sleep(time_step - delta_t)
-            last_time = current_time
-
-
+            except Exception as e:
+                self.logger.error(f"Error during joint control: {e}")
+                goal_handle.abort()
+                return TrajectoryAction.Result(success=False)
 
         # Check the joint information again to ensure max velocity is set
         joint_info = p.getJointInfo(robot_id, 0, physicsClientId=client_id)
