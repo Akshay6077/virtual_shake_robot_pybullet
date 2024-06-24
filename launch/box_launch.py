@@ -10,8 +10,8 @@ def generate_launch_description():
 
     physics_engine_parameters_path = os.path.join(config_directory, 'physics_engine_parameters.yaml')
     physics_parameters_path = os.path.join(config_directory, 'physics_parameters.yaml')
-    vsr_structure_path = os.path.join(config_directory, 'vsr_box.yaml')
-    pbr_structure_path = os.path.join(config_directory, 'pbr_physics.yaml')
+    vsr_structure_path = os.path.join(config_directory, 'vsr_structure_box.yaml')
+    pbr_structure_path = os.path.join(config_directory, 'pbr_box.yaml')
     pbr_mesh_structure_path = os.path.join(config_directory, 'pbr_mesh.yaml')
 
     simulation_node = Node(

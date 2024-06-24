@@ -31,6 +31,10 @@ class ControlNode(Node):
         self.timestamps = []
         self.positions = []
         self.velocities = []
+
+        #Parameter for the reset_trajectory
+
+        self.reset_time = self.declare_parameter('reset_time', 1.0).value
         
 
     def execute_callback(self, goal_handle):
@@ -163,7 +167,7 @@ class ControlNode(Node):
     def generate_reset_trajectory(self, start_pose):
 
         """Generate a reset trajectory from the current pose to the start position (0)."""
-        T = 1.0  # Total duration for reset, you can adjust as needed
+        T = self.reset_time  # from the .yaml file 
         num_samples = int(self.control_frequency * T)
         t = np.linspace(0, T, num_samples)
         positions = (start_pose / 2) * (1 - np.cos(np.pi * t / T))
