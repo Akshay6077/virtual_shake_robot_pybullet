@@ -74,6 +74,7 @@ class SimulationNode(Node):
                 ('rock_structure.mass', rclpy.Parameter.Type.DOUBLE),
                 ('rock_structure.restitution', rclpy.Parameter.Type.DOUBLE),
                 ('rock_structure.lateralFriction', rclpy.Parameter.Type.DOUBLE),
+                ('rock_structure.localInertiaDiagonal', rclpy.Parameter.Type.DOUBLE_ARRAY),
                 ('rock_structure.spinningFriction', rclpy.Parameter.Type.DOUBLE),
                 ('rock_structure.rollingFriction', rclpy.Parameter.Type.DOUBLE),
                 ('rock_structure.contactDamping', rclpy.Parameter.Type.DOUBLE),
@@ -136,6 +137,7 @@ class SimulationNode(Node):
             'contactStiffness': self.get_parameter('rock_structure.contactStiffness').value,
             'mesh': self.get_parameter('rock_structure.mesh').value,
             'meshScale': self.get_parameter('rock_structure.meshScale').value,
+            'localInertiaDiagonal': self.get_parameter('rock_structure.localInertiaDiagonal').value
 
         }
 
@@ -203,14 +205,14 @@ class SimulationNode(Node):
         base_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[25, 7, 1], rgbaColor=[1, 1, 0, 1])  # Yellow color
 
         # Define the pedestal of the shake table
-        pedestal_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[5, 5, 0.05])
+        pedestal_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[5, 5, 0.25])
         pedestal_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[5, 5, 0.05], rgbaColor=[1, 0, 0, 1])  # Red color
 
         # Create the base and pedestal as a single multi-body
         base_position = [0, 0, 1.0]  # Base is positioned at z = 1.0
         base_orientation = p.getQuaternionFromEuler([0, 0, 0])
 
-        link_masses = [10000.0]  # Mass of the pedestal
+        link_masses = [20000.0]  # Mass of the pedestal
         link_collision_shapes = [pedestal_collision_shape]
         link_visual_shapes = [pedestal_visual_shape]
         link_positions = [[0, 0, 1.05]]  
@@ -271,7 +273,7 @@ class SimulationNode(Node):
             spinningFriction=0.5,
             rollingFriction=0.6,
             contactDamping=0.5,
-            contactStiffness=1e6,
+            contactStiffness=1e4,
             collisionMargin=0.01,
             localInertiaDiagonal=[0,0,0],
             physicsClientId=client_id
@@ -284,9 +286,9 @@ class SimulationNode(Node):
             spinningFriction=0.5,
             rollingFriction=0.6,
             contactDamping=0.5,
-            contactStiffness=1e6,
+            contactStiffness=1e4,
             collisionMargin=0.01,
-            localInertiaDiagonal=[84166.67 , 84166.67 , 166666.67],
+            localInertiaDiagonal=[166833.33,166833.33,333333,33],
             physicsClientId=client_id
         )
 
@@ -295,46 +297,46 @@ class SimulationNode(Node):
             joint_info = p.getJointInfo(self.robot_id, joint_index, physicsClientId=client_id)
             self.get_logger().info(f"Joint {joint_index} info: {joint_info}")
 
-        # Load a box on top of the pedestal
-        box_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.5, 1, 1.5])
-        box_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.5, 1, 1.5], rgbaColor=[0, 0, 1, 1])  # Blue color
-        box_position = [0, 0, 3.6]  # Adjusted to place the box correctly on the pedestal
+        # # Load a box on top of the pedestal
+        # box_collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.5, 1, 1.5])
+        # box_visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[0.5, 1, 1.5], rgbaColor=[0, 0, 1, 1])  # Blue color
+        # box_position = [0, 0, 3.6]  # Adjusted to place the box correctly on the pedestal
 
-        box = p.createMultiBody(
-            baseMass=5000.0,
-            baseCollisionShapeIndex=box_collision_shape,
-            baseVisualShapeIndex=box_visual_shape,
-            basePosition=box_position,
-            physicsClientId=client_id
-        )
+        # box = p.createMultiBody(
+        #     baseMass=5000.0,
+        #     baseCollisionShapeIndex=box_collision_shape,
+        #     baseVisualShapeIndex=box_visual_shape,
+        #     basePosition=box_position,
+        #     physicsClientId=client_id
+        # )
 
-        if box < 0:
-            self.get_logger().error("Failed to create the box.")
-            return
+        # if box < 0:
+        #     self.get_logger().error("Failed to create the box.")
+        #     return
 
-        self.get_logger().info(f"Box created with ID: {box}")
+        # self.get_logger().info(f"Box created with ID: {box}")
 
-        # Enable collision for the box
-        p.setCollisionFilterGroupMask(box, -1, collisionFilterGroup=1, collisionFilterMask=1)
-        self.get_logger().info(f"Collision filter set for box with ID: {box}")
+        # # Enable collision for the box
+        # p.setCollisionFilterGroupMask(box, -1, collisionFilterGroup=1, collisionFilterMask=1)
+        # self.get_logger().info(f"Collision filter set for box with ID: {box}")
 
-        # Set dynamics parameters for the box
-        p.changeDynamics(
-            box, -1,
-            restitution=0.9,
-            lateralFriction=0.6,
-            spinningFriction=0.3,
-            rollingFriction=0.3,
-            contactDamping=0.5,
-            contactStiffness=1e6,
-            collisionMargin=0.01,
-            localInertiaDiagonal=[5416.66, 4166.67, 2083.33],
-            physicsClientId=client_id
-        )
+        # # Set dynamics parameters for the box
+        # p.changeDynamics(
+        #     box, -1,
+        #     restitution=0.9,
+        #     lateralFriction=0.6,
+        #     spinningFriction=0.3,
+        #     rollingFriction=0.3,
+        #     contactDamping=0.5,
+        #     contactStiffness=1e4,
+        #     collisionMargin=0.01,
+        #     localInertiaDiagonal=[5416.66, 4166.67, 2083.33],
+        #     physicsClientId=client_id
+        # )
 
-        # Verify the box dynamics
-        dynamics_info = p.getDynamicsInfo(box, -1)
-        self.get_logger().info(f"Box dynamics info: {dynamics_info}")
+        # # Verify the box dynamics
+        # dynamics_info = p.getDynamicsInfo(box, -1)
+        # self.get_logger().info(f"Box dynamics info: {dynamics_info}")
 
 
         # # Enable debug visualizer
@@ -362,30 +364,33 @@ class SimulationNode(Node):
 
         try:
             if structure_type == 'mesh':
-                rock_mesh_path = self.rock_structure_config['mesh']
-                rock_mesh_scale = self.rock_structure_config['meshScale']
-                rock_mass = self.rock_structure_config['mass']
-                rock_restitution = self.rock_structure_config['restitution']
-                rock_lateralFriction = self.rock_structure_config['lateralFriction']
-                rock_spinningFriction = self.rock_structure_config['spinningFriction']
-                rock_rollingFriction = self.rock_structure_config['rollingFriction']
-                rock_contactDamping = self.rock_structure_config['contactDamping']
-                rock_contactStiffness = self.rock_structure_config['contactStiffness']
+                # Hardcoded parameters for the mesh
+                rock_mesh_path = '/home/akshay/mesh_files/closed_pbr.obj'
+                rock_mesh_scale = [1.0, 1.0, 1.0]
+                rock_mass = 1.438
+                rock_restitution = 0.1
+                rock_lateralFriction = 0.5
+                rock_spinningFriction = 0.3
+                rock_rollingFriction = 0.3
+                rock_contactDamping = 0.1
+                rock_contactStiffness = 1000.0
 
                 self.get_logger().info(f"Loading rock mesh from {rock_mesh_path}...")
                 collision_shape = p.createCollisionShape(shapeType=p.GEOM_MESH, fileName=rock_mesh_path, meshScale=rock_mesh_scale)
                 visual_shape = p.createVisualShape(shapeType=p.GEOM_MESH, fileName=rock_mesh_path, meshScale=rock_mesh_scale, rgbaColor=[0.5, 0.5, 0.5, 1])
-                rock_height = rock_mesh_scale[2]  
+                rock_height = rock_mesh_scale[2]
 
             elif structure_type == 'box':
-                rock_dimensions = self.rock_structure_config['dimensions']
-                rock_mass = self.rock_structure_config['mass']
-                rock_restitution = self.rock_structure_config['restitution']
-                rock_lateralFriction = self.rock_structure_config['lateralFriction']
-                rock_spinningFriction = self.rock_structure_config['spinningFriction']
-                rock_rollingFriction = self.rock_structure_config['rollingFriction']
-                rock_contactDamping = self.rock_structure_config['contactDamping']
-                rock_contactStiffness = self.rock_structure_config['contactStiffness']
+                # Hardcoded parameters for the box
+                rock_dimensions = [1.0, 2.0, 3.0]
+                rock_mass = 5000.0
+                rock_restitution = 0.9
+                rock_lateralFriction = 0.6
+                rock_spinningFriction = 0.3
+                rock_rollingFriction = 0.3
+                rock_contactDamping = 0.5
+                rock_contactStiffness = 1000000
+                rock_inertia = [5416.66, 4166.67, 2083.33]
 
                 self.get_logger().info("Loading rock as a box...")
                 collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[d / 2 for d in rock_dimensions])
@@ -396,10 +401,6 @@ class SimulationNode(Node):
                 self.get_logger().error("Unknown rock structure type.")
                 goal_handle.abort()
                 return LoadPBR.Result(success=False)
-
-            # # Common position logic
-            # world_box_height = self.structure_config['world_box']['dimensions'][2]
-            # pedestal_height = self.structure_config['pedestal']['dimensions'][2]
 
             rock_position = [0, 0, 3.65]
             self.get_logger().info(f"Placing rock at position: {rock_position}")
@@ -423,6 +424,7 @@ class SimulationNode(Node):
                 rollingFriction=rock_rollingFriction,
                 contactDamping=rock_contactDamping,
                 contactStiffness=rock_contactStiffness,
+                localInertiaDiagonal=rock_inertia if structure_type == 'box' else [0, 0, 0],
                 physicsClientId=self.client[0]
             )
 
