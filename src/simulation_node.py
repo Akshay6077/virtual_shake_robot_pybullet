@@ -3,12 +3,14 @@ import rclpy
 import pybullet as p
 import pybullet_data
 import time
+import numpy as np
 import matplotlib.pyplot as plt
 from rclpy.node import Node
 from rclpy.action import ActionServer
 from virtual_shake_robot_pybullet.action import TrajectoryAction, LoadPBR
 from std_msgs.msg import Float64
-from geometry_msgs.msg import Twist, Vector3
+from std_msgs.msg import Header
+from geometry_msgs.msg import PoseStamped, Pose, Point, Quaternion
 
 class SimulationNode(Node):
     def __init__(self):
@@ -39,6 +41,11 @@ class SimulationNode(Node):
 
         self.desired_position_publisher = self.create_publisher(Float64, 'desired_position_topic', 10)
         self.desired_velocity_publisher = self.create_publisher(Float64, 'desired_velocity_topic', 10)
+
+        #Pbr_rock state publisher
+
+        self.pbr_pose_publisher = self.create_publisher(PoseStamped, 'pbr_pose_topic', 10)
+
 
 
         # Declaring parameters
@@ -268,12 +275,12 @@ class SimulationNode(Node):
         # Set dynamics parameters for the base and pedestal
         p.changeDynamics(
             self.robot_id, -1,
-            restitution=0.9,
+            restitution=0.5,
             lateralFriction=0.6,
             spinningFriction=0.5,
             rollingFriction=0.6,
-            contactDamping=0.5,
-            contactStiffness=1e4,
+            contactDamping=1000,
+            contactStiffness=1e8,
             collisionMargin=0.01,
             localInertiaDiagonal=[0,0,0],
             physicsClientId=client_id
@@ -281,12 +288,12 @@ class SimulationNode(Node):
 
         p.changeDynamics(
             self.robot_id, 0,  # Link index for the pedestal
-            restitution=0.9,
+            restitution=0.0,
             lateralFriction=0.6,
             spinningFriction=0.5,
             rollingFriction=0.6,
-            contactDamping=0.5,
-            contactStiffness=1e4,
+            contactDamping=1000,
+            contactStiffness=1e8,
             collisionMargin=0.01,
             localInertiaDiagonal=[166833.33,166833.33,333333,33],
             physicsClientId=client_id
@@ -348,9 +355,8 @@ class SimulationNode(Node):
 
 
 
-
     def load_pbr_callback(self, goal_handle):
-        '''Load the Pbr callback function'''
+        '''Load the PBR callback function'''
 
         self.logger.info("Loading PBR structure...")
         structure_name = goal_handle.request.structure_name
@@ -363,53 +369,72 @@ class SimulationNode(Node):
             return LoadPBR.Result(success=False)
 
         try:
+            pedestal_height = 2.1  # Adjust this value based on the actual pedestal height in your simulation
+
             if structure_type == 'mesh':
-                # Hardcoded parameters for the mesh
+                # Parameters for the mesh file
                 rock_mesh_path = '/home/akshay/mesh_files/closed_pbr.obj'
                 rock_mesh_scale = [1.0, 1.0, 1.0]
                 rock_mass = 1.438
-                rock_restitution = 0.1
+                rock_restitution = 0.0
                 rock_lateralFriction = 0.5
                 rock_spinningFriction = 0.3
                 rock_rollingFriction = 0.3
-                rock_contactDamping = 0.1
+                rock_contactDamping = 10.0
                 rock_contactStiffness = 1000.0
+
+                # Inertia values obtained from Fusion 360
+                inertia_tensor = np.array([
+                    [26.047, -1.288, -8.369],
+                    [-1.288, 31.342, -2.681],
+                    [-8.369, -2.681, 13.404]
+                ])
+
+                # Calculate principal moments and rotation matrix
+                principal_moments, rotation_matrix = np.linalg.eigh(inertia_tensor)
+                principal_moments = principal_moments.tolist()
 
                 self.get_logger().info(f"Loading rock mesh from {rock_mesh_path}...")
                 collision_shape = p.createCollisionShape(shapeType=p.GEOM_MESH, fileName=rock_mesh_path, meshScale=rock_mesh_scale)
                 visual_shape = p.createVisualShape(shapeType=p.GEOM_MESH, fileName=rock_mesh_path, meshScale=rock_mesh_scale, rgbaColor=[0.5, 0.5, 0.5, 1])
                 rock_height = rock_mesh_scale[2]
 
+               
+                rock_position_offset = 0.15 
+                rock_position = [0, 0, pedestal_height + rock_height / 2.0 + rock_position_offset]
+
             elif structure_type == 'box':
                 # Hardcoded parameters for the box
                 rock_dimensions = [1.0, 2.0, 3.0]
                 rock_mass = 5000.0
-                rock_restitution = 0.9
+                rock_restitution = 0.0
                 rock_lateralFriction = 0.6
                 rock_spinningFriction = 0.3
                 rock_rollingFriction = 0.3
-                rock_contactDamping = 0.5
-                rock_contactStiffness = 1000000
-                rock_inertia = [5416.66, 4166.67, 2083.33]
+                rock_contactDamping = 1000
+                rock_contactStiffness = 1e8
+                principal_moments = [5416.66, 4166.67, 2083.33]  # For the box
 
                 self.get_logger().info("Loading rock as a box...")
                 collision_shape = p.createCollisionShape(p.GEOM_BOX, halfExtents=[d / 2 for d in rock_dimensions])
                 visual_shape = p.createVisualShape(p.GEOM_BOX, halfExtents=[d / 2 for d in rock_dimensions], rgbaColor=[0.5, 0.5, 0.5, 1])
                 rock_height = rock_dimensions[2]
 
+                rock_position = [0, 0, pedestal_height + rock_height / 2.0 + 0.5]
+
             else:
                 self.get_logger().error("Unknown rock structure type.")
                 goal_handle.abort()
                 return LoadPBR.Result(success=False)
 
-            rock_position = [0, 0, 3.65]
             self.get_logger().info(f"Placing rock at position: {rock_position}")
 
             rock_id = p.createMultiBody(
-                baseMass=rock_mass, 
+                baseMass=rock_mass,
                 baseCollisionShapeIndex=collision_shape,
                 baseVisualShapeIndex=visual_shape,
                 basePosition=rock_position,
+                baseOrientation=[0, 0, 0, 1],  # No rotation for base
                 physicsClientId=self.client[0]
             )
 
@@ -424,7 +449,7 @@ class SimulationNode(Node):
                 rollingFriction=rock_rollingFriction,
                 contactDamping=rock_contactDamping,
                 contactStiffness=rock_contactStiffness,
-                localInertiaDiagonal=rock_inertia if structure_type == 'box' else [0, 0, 0],
+                localInertiaDiagonal=principal_moments,  
                 physicsClientId=self.client[0]
             )
 
@@ -444,6 +469,7 @@ class SimulationNode(Node):
             return LoadPBR.Result(success=False)
 
 
+
     def execute_trajectory_callback(self, goal_handle):
         '''Execute the trajectory from the data received'''
         self.logger.info("Executing trajectory callback...")
@@ -453,6 +479,7 @@ class SimulationNode(Node):
         positions = goal_handle.request.position_list
         velocities = goal_handle.request.velocity_list
         timestamps = goal_handle.request.timestamp_list
+        wait_time = goal_handle.request.wait_time
 
         feedback_msg = TrajectoryAction.Feedback()
 
@@ -495,9 +522,6 @@ class SimulationNode(Node):
             joint_state = p.getJointState(robot_id, 0, physicsClientId=client_id)
             actual_position, actual_velocity = joint_state[0], joint_state[1]
 
-
-            
-
             self.actual_positions.append(actual_position)
             self.actual_velocities.append(actual_velocity)
 
@@ -505,28 +529,44 @@ class SimulationNode(Node):
             self.postion_publisher.publish(Float64(data=actual_position))
             self.velocity_publisher.publish(Float64(data=actual_velocity))
 
-
-
-             
-            #Feedback
-
+            # Feedback
             feedback_msg.current_position = actual_position
             feedback_msg.current_velocity = actual_velocity
             goal_handle.publish_feedback(feedback_msg)
-          
+            
             current_time = time.time()
             delta_t = current_time - last_time
             if time_step > delta_t:
                 time.sleep(time_step - delta_t)
             last_time = current_time
 
+        # Wait for the specified wait time after the trajectory execution
+        self.get_logger().info(f"Waiting for {wait_time} seconds after trajectory completion.")
+        end_wait_time = time.time() + wait_time
+        while time.time() < end_wait_time:
+            p.stepSimulation(physicsClientId=client_id)
 
+            # Get the position and orientation of the PBR
+            pbr_position, pbr_orientation = p.getBasePositionAndOrientation(self.rock_id, physicsClientId=client_id)
+
+            # Create a PoseStamped message
+            pose_msg = PoseStamped()
+            pose_msg.header.stamp = self.get_clock().now().to_msg()
+            pose_msg.header.frame_id = "world"
+
+            pose_msg.pose.position = Point(x=pbr_position[0], y=pbr_position[1], z=pbr_position[2])
+            pose_msg.pose.orientation = Quaternion(x=pbr_orientation[0], y=pbr_orientation[1], z=pbr_orientation[2], w=pbr_orientation[3])
+
+            # Publish the PoseStamped message
+            self.pbr_pose_publisher.publish(pose_msg)
+
+            time.sleep(time_step)
 
         # Check the joint information again to ensure max velocity is set
         joint_info = p.getJointInfo(robot_id, 0, physicsClientId=client_id)
         self.get_logger().info(f"Updated joint information after trajectory execution: {joint_info}")
 
-        max_velocity = joint_info[11]  
+        max_velocity = joint_info[11]
         self.get_logger().info(f"Updated maximum velocity of the joint after trajectory execution: {max_velocity}")
 
         self.get_logger().info(f"Final actual positions: {self.actual_positions}")
@@ -539,6 +579,7 @@ class SimulationNode(Node):
         result.actual_positions = self.actual_positions
         result.actual_velocities = self.actual_velocities
         return result
+
 
 
     def disconnect(self):

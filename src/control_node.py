@@ -129,6 +129,11 @@ class ControlNode(Node):
         goal_msg.position_list = positions
         goal_msg.velocity_list = velocities
         goal_msg.timestamp_list = timestamps
+
+        ##Setting a wait time  after the trajectory execution
+
+        wait_time = 10.0
+        goal_msg.wait_time = wait_time
         
         # Ensure the action server is available
         if not self._trajectory_action_client.wait_for_server(timeout_sec=10.0):
