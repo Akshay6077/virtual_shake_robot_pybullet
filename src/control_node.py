@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+import csv
 import pybullet as p
 import time
 import rclpy
@@ -226,6 +226,9 @@ class ControlNode(Node):
         Returns:
             None
         """
+        sim_no = self.get_namespace()
+        csv_file_path = f'/home/akshay/ros2_ws/src/virtual_shake_robot_pybullet/data/toppling_status_{sim_no}.csv'
+        topple_status_array =  []
         for test_no in range(11, 705):  # Test numbers from 011 to 705
             self.get_logger().info(f"Starting experiment on Test No: {test_no}")
 
@@ -258,10 +261,13 @@ class ControlNode(Node):
                     self.plot_pgv_pga(pga, pgv_to_pga, toppled)
                     if toppled:
                         self.get_logger().info("The Rock has toppled.")
+                        topple_status_array.append(1)
                     else:
                         self.get_logger().info("The rock has not toppled.")
+                        topple_status_array.append(0)
                 else:
                     self.get_logger().warning(f"No pose received for Test No: {test_no} after waiting.")
+                    topple_status_array.append(0)
             else:
                 self.get_logger().error(f"Experiment on Test No: {test_no} failed or was not completed.")
 
@@ -276,6 +282,29 @@ class ControlNode(Node):
             self.rock_id = 2
 
             rclpy.spin_once(self, timeout_sec=0.001)
+
+        # After all tests, save toppling status to CSV
+        self.save_toppling_status_to_csv(topple_status_array, csv_file_path)
+
+    def save_toppling_status_to_csv(self, topple_status_array):
+        """
+        Save the toppling status array to a CSV file.
+
+        Args:
+            topple_status_array (list): List of toppling statuses for each test.
+        """
+        # Define the CSV file path including the file name
+        csv_file_path = '/home/akshay/ros2_ws/src/virtual_shake_robot_pybullet/data/toppling_status.csv'
+        
+        # Open the file in write mode and save the toppling status
+        with open(csv_file_path, 'w', newline='') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(['Test No', 'Toppling Status'])
+            for i, status in enumerate(topple_status_array, start=1):  # Assuming test_no starts from 1
+                writer.writerow([i, status])  # Write test number and corresponding toppling status
+        
+        self.get_logger().info(f"Toppling status saved to {csv_file_path}")
+        
     def plot_pgv_pga(self, pga, pgv_to_pga, toppled):
         """
         Plots the PGV vs PGA data, updating the visualization with toppling status.

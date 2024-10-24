@@ -752,7 +752,7 @@ class SimulationNode(Node):
 
         # After the loop, save the simulation data to a numpy file
         ros2_ws = os.getenv('ROS2_WS', default=os.path.expanduser('~/ros2_ws'))
-        recordings_folder = os.path.join(ros2_ws,'src' ,'virtual_shake_robot_pybullet', 'recordings' , 'recordings_gui_off_rtf_off')
+        recordings_folder = os.path.join(ros2_ws,'src' ,'virtual_shake_robot_pybullet', 'recordings' , 'recordings_lateral')
         os.makedirs(recordings_folder, exist_ok=True)
 
         full_namespace = self.get_namespace()
